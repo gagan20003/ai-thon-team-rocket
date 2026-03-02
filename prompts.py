@@ -1,4 +1,4 @@
-from langchain.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_classic.prompts import ChatPromptTemplate, PromptTemplate
 
 SUMMARY_PROMPT = PromptTemplate(
     input_variables=["context"],

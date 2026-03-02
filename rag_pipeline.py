@@ -2,28 +2,46 @@ import os
 import tempfile
 from typing import List, Tuple
 
-from langchain.chains import ConversationalRetrievalChain
-from langchain.schema import Document
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_classic.chains import ConversationalRetrievalChain
+from langchain_classic.schema import Document
+from langchain_classic.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
-from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from langchain_community.embeddings import JinaEmbeddings
 
 from prompts import DOCTOR_QUESTIONS_PROMPT, QA_PROMPT, SUMMARY_PROMPT
 
+# ---------- LiteLLM gateway configuration ----------
+# NOTE: env vars are read inside functions (not at module level)
+# because this module is imported before load_dotenv() runs.
 
-def get_llm(provider: str = "groq", model: str | None = None):
-    if provider == "openai":
-        return ChatOpenAI(model=model or "gpt-4o-mini", temperature=0)
-    return ChatGroq(model_name=model or "llama-3.3-70b-versatile", temperature=0)
+def _get_gateway_config():
+    """Read LiteLLM gateway settings from environment."""
+    return {
+        "base_url": os.getenv("LITELLM_BASE_URL", "https://litellm.ai-coe-test.aws.evernorthcloud.com"),
+        "api_key": os.getenv("LITELLM_API_KEY", ""),
+    }
 
 
-def get_embeddings(provider: str = "openai"):
-    if provider == "jina":
-        return JinaEmbeddings(model_name="jina-embeddings-v2-base-en")
-    return OpenAIEmbeddings(model="text-embedding-3-small")
+def get_llm(model: str | None = None):
+    """Return a ChatOpenAI instance pointed at the LiteLLM gateway."""
+    cfg = _get_gateway_config()
+    return ChatOpenAI(
+        model=model or os.getenv("LITELLM_CHAT_MODEL", "gpt-4o-mini"),
+        temperature=0,
+        base_url=cfg["base_url"],
+        api_key=cfg["api_key"],
+    )
+
+
+def get_embeddings():
+    """Return an OpenAIEmbeddings instance pointed at the LiteLLM gateway."""
+    cfg = _get_gateway_config()
+    return OpenAIEmbeddings(
+        model="text-embedding-3-small",
+        base_url=cfg["base_url"],
+        api_key=cfg["api_key"],
+    )
 
 
 def load_pdf_from_bytes(file_bytes: bytes) -> List[Document]:
@@ -45,8 +63,8 @@ def split_documents(docs: List[Document]) -> List[Document]:
     return splitter.split_documents(docs)
 
 
-def build_vector_store(chunks: List[Document], embedding_provider: str = "openai") -> FAISS:
-    embeddings = get_embeddings(provider=embedding_provider)
+def build_vector_store(chunks: List[Document]) -> FAISS:
+    embeddings = get_embeddings()
     return FAISS.from_documents(chunks, embeddings)
 
 
