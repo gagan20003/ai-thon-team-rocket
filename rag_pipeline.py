@@ -9,6 +9,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_community.embeddings import JinaEmbeddings
 
 from prompts import DOCTOR_QUESTIONS_PROMPT, QA_PROMPT, SUMMARY_PROMPT
 
@@ -16,10 +17,12 @@ from prompts import DOCTOR_QUESTIONS_PROMPT, QA_PROMPT, SUMMARY_PROMPT
 def get_llm(provider: str = "groq", model: str | None = None):
     if provider == "openai":
         return ChatOpenAI(model=model or "gpt-4o-mini", temperature=0)
-    return ChatGroq(model_name=model or "llama3-70b-8192", temperature=0)
+    return ChatGroq(model_name=model or "llama-3.3-70b-versatile", temperature=0)
 
 
-def get_embeddings() -> OpenAIEmbeddings:
+def get_embeddings(provider: str = "openai"):
+    if provider == "jina":
+        return JinaEmbeddings(model_name="jina-embeddings-v2-base-en")
     return OpenAIEmbeddings(model="text-embedding-3-small")
 
 
@@ -42,29 +45,65 @@ def split_documents(docs: List[Document]) -> List[Document]:
     return splitter.split_documents(docs)
 
 
-def build_vector_store(chunks: List[Document]) -> FAISS:
-    embeddings = get_embeddings()
+def build_vector_store(chunks: List[Document], embedding_provider: str = "openai") -> FAISS:
+    embeddings = get_embeddings(provider=embedding_provider)
     return FAISS.from_documents(chunks, embeddings)
 
 
-def summarize_report(vector_store: FAISS, llm) -> str:
-    docs = vector_store.similarity_search("Summarize the medical report", k=6)
+def summarize_report(
+    vector_store: FAISS,
+    llm,
+    k: int = 6,
+    max_chars: int = 8000,
+) -> str:
+    docs = vector_store.similarity_search("Summarize the medical report", k=k)
     if not docs:
         raise ValueError("No content found to summarize.")
-    context = "\n\n".join(doc.page_content for doc in docs)
+    context_parts = []
+    total_chars = 0
+    for doc in docs:
+        chunk = doc.page_content.strip()
+        if not chunk:
+            continue
+        if total_chars + len(chunk) > max_chars:
+            remaining = max_chars - total_chars
+            if remaining > 0:
+                context_parts.append(chunk[:remaining])
+            break
+        context_parts.append(chunk)
+        total_chars += len(chunk)
+    context = "\n\n".join(context_parts)
     prompt = SUMMARY_PROMPT.format(context=context)
     response = llm.invoke(prompt)
     return response.content.strip()
 
 
-def generate_doctor_questions(vector_store: FAISS, llm) -> str:
+def generate_doctor_questions(
+    vector_store: FAISS,
+    llm,
+    k: int = 6,
+    max_chars: int = 8000,
+) -> str:
     docs = vector_store.similarity_search(
         "Generate questions for a doctor visit based on abnormal findings",
-        k=6,
+        k=k,
     )
     if not docs:
         raise ValueError("No content found to generate questions.")
-    context = "\n\n".join(doc.page_content for doc in docs)
+    context_parts = []
+    total_chars = 0
+    for doc in docs:
+        chunk = doc.page_content.strip()
+        if not chunk:
+            continue
+        if total_chars + len(chunk) > max_chars:
+            remaining = max_chars - total_chars
+            if remaining > 0:
+                context_parts.append(chunk[:remaining])
+            break
+        context_parts.append(chunk)
+        total_chars += len(chunk)
+    context = "\n\n".join(context_parts)
     prompt = DOCTOR_QUESTIONS_PROMPT.format(context=context)
     response = llm.invoke(prompt)
     return response.content.strip()

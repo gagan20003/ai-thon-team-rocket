@@ -18,6 +18,7 @@ SUMMARY_PROMPT = PromptTemplate(
     ),
 )
 
+
 QA_PROMPT = ChatPromptTemplate.from_messages(
     [
         (

@@ -12,7 +12,7 @@ A Streamlit RAG chatbot that summarizes medical report PDFs, highlights abnormal
 - Python + Streamlit
 - LangChain
 - GROQ (llama3-70b-8192) with optional OpenAI switch
-- OpenAI embeddings (text-embedding-3-small)
+- Embeddings: Jina (free) or OpenAI (text-embedding-3-small)
 - FAISS in-memory vector store
 
 ## Setup
@@ -26,6 +26,7 @@ A Streamlit RAG chatbot that summarizes medical report PDFs, highlights abnormal
    ```
    GROQ_API_KEY=your_groq_api_key
    OPENAI_API_KEY=your_openai_api_key
+   JINA_API_KEY=your_jina_api_key
    ```
 
 ## Run
@@ -41,4 +42,5 @@ streamlit run app.py
 
 ## Notes
 - The default LLM provider is Groq. You can switch to OpenAI from the sidebar.
+- The default embeddings provider is Jina (free). You can switch to OpenAI from the sidebar.
 - The assistant will not diagnose or prescribe and will encourage consulting a clinician.
