@@ -1,0 +1,236 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "/*\n  n8n Node 2: \"Build Row\"\n  \n  Extracts PR data from GitHub webhook, fetches the full diff,\n  and composes a rich AI prompt for ALL changes.\n  \n  Input:  GitHub Pull Request webhook payload\n  Output: Structured data + ai_prompt field for the AI Agent node\n*/\n\nconst items = $input.all();\nconst item = items[0];\n\n// \u2500\u2500 Normalize payload: n8n GitHub Trigger may nest data under body \u2500\u2500\n// The githubTrigger node can put the webhook payload at different levels\nconst payload = item.json;\nconst pr = payload.pull_request ?? payload.body?.pull_request ?? null;\nconst action = payload.action ?? payload.body?.action ?? '';\n\n// Check if this is a test execution (no webhook data)\nconst isTest = !pr;\n\nif (isTest) {\n  // Create sample data for testing\n  item.json.ai_prompt = `You are a senior software engineer writing a concise Confluence changelog entry.\n\nAnalyze the pull request below and write a 2-3 sentence plain-English summary that:\n1. States WHAT was changed (files/modules affected)\n2. States WHY or WHAT PURPOSE the change serves\n3. Notes any important technical details (schema changes, API changes, breaking changes)\n\nRules:\n- No markdown, no bullet points, no headings \u2014 plain text only\n- Maximum 60 words\n- Be specific about what actually changed\n\nPull Request: #123 \u2014 TEST-456: Sample PR for testing\nAuthor: TestUser\nRepository: test-repo\nFiles Changed: 3 files (+45, -12)\nPR Body:\nThis is a test PR to verify the workflow runs correctly.\n\nWrite ONLY the summary paragraph, nothing else.`;\n  \n  item.json.jira_id = 'TEST-456';\n  item.json.author = 'TestUser';\n  item.json.reviewer = 'Morgan Housel';\n  item.json.pr_number = '123';\n  item.json.pr_title = 'TEST-456: Sample PR for testing';\n  item.json.pr_url = 'https://github.com/test/test/pull/123';\n  item.json.files_changed = '3 files (+45, -12)';\n  item.json.file_count = '3';\n  item.json.page_id = '688129';\n  \n  return items;\n}\n\n// \u2500\u2500 Debug: log what we received so you can inspect in n8n execution \u2500\u2500\nitem.json._debug_action = action;\nitem.json._debug_pr_merged = pr.merged ?? false;\nitem.json._debug_pr_state = pr.state ?? 'unknown';\n\n// Only process if PR was actually merged (not just closed)\nif (action !== 'closed' || !pr.merged) {\n  // Return the item WITH data so downstream nodes still execute\n  // and you can see what happened in the execution log\n  item.json._skipped = true;\n  item.json._skip_reason = `action=${action}, merged=${pr.merged ?? false}`;\n  item.json.ai_prompt = '';\n  item.json.jira_id = '';\n  item.json.author = '';\n  item.json.reviewer = '';\n  item.json.pr_number = '';\n  item.json.pr_title = '';\n  item.json.pr_url = '';\n  item.json.files_changed = '';\n  item.json.file_count = '';\n  item.json.page_id = '';\n  return items;\n}\n\n// Extract PR metadata\nconst jiraId = pr.title.match(/([A-Z]+-\\d+)/)?.[1] ?? 'NO-ID';\nconst author = pr.user?.login ?? 'Unknown';\nconst reviewer = pr.merged_by?.login ?? 'Morgan Housel';\nconst prNumber = pr.number?.toString() ?? '';\nconst prTitle = pr.title ?? '';\nconst prUrl = pr.html_url ?? '#';\nconst repository = payload.repository?.name ?? payload.body?.repository?.name ?? '';\nconst pageId = '688129';\n\n// Get changed files info\nconst changedFiles = pr.changed_files ?? 0;\nconst additions = pr.additions ?? 0;\nconst deletions = pr.deletions ?? 0;\n\n// Fetch the diff from GitHub\nlet fullDiff = 'Diff not available';\ntry {\n  const diffUrl = pr.diff_url;\n  if (diffUrl) {\n    item.json.diff_url = diffUrl;\n    fullDiff = '[Diff will be fetched from GitHub]';\n  }\n} catch (e) {\n  fullDiff = 'Could not get diff URL: ' + e.message;\n}\n\n// Build files changed summary\nconst filesChanged = `${changedFiles} files (+${additions}, -${deletions})`;\n\n// Compose the AI prompt\nitem.json.ai_prompt = `You are a senior software engineer writing a concise Confluence changelog entry.\n\nAnalyze the pull request below and write a 2-3 sentence plain-English summary that:\n1. States WHAT was changed (files/modules affected)\n2. States WHY or WHAT PURPOSE the change serves\n3. Notes any important technical details (schema changes, API changes, breaking changes)\n\nRules:\n- No markdown, no bullet points, no headings \u2014 plain text only\n- Maximum 60 words\n- Be specific about what actually changed\n\nPull Request: #${prNumber} \u2014 ${prTitle}\nAuthor: ${author}\nRepository: ${repository}\nFiles Changed: ${filesChanged}\nPR Body:\n${pr.body ?? 'No description provided'}\n\nWrite ONLY the summary paragraph, nothing else.`;\n\n// Pass all fields through for downstream nodes\nitem.json.jira_id = jiraId;\nitem.json.author = author;\nitem.json.reviewer = reviewer;\nitem.json.pr_number = prNumber;\nitem.json.pr_title = prTitle;\nitem.json.pr_url = prUrl;\nitem.json.files_changed = filesChanged;\nitem.json.file_count = changedFiles.toString();\nitem.json.page_id = pageId;\nitem.json._skipped = false;\n\nreturn items;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-48, -144],
+      "id": "567b923f-b177-4439-a7be-fc1687c7fa92",
+      "name": "Build Row"
+    },
+    {
+      "parameters": {
+        "url": "https://dreadvoyager.atlassian.net/wiki/api/v2/pages/327682",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "body-format",
+              "value": "storage"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [528, -144],
+      "id": "3e16de22-624f-4a04-963c-b37dc4701c66",
+      "name": "HTTP Request",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "UheEH6Fo3i0kVfs4",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "/*\n  n8n Node 5: \"Append Row\"\n  \n  Appends a new row to the Confluence table using:\n  - Data from \"Build Row\" node (jira_id, author, pr, files)\n  - AI-generated summary from the AI Agent node (via $() reference)\n  - Current page body + version from the GET Page node\n*/\n\nconst items = $input.all();\nconst item = items[0];\n\n// \u2500\u2500 From GET Confluence page (v2 API) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n// v2 API: version.number, body.storage.value\n// v1 API: version.number, body.storage.value (same paths)\nconst currentVersion = item.json.version?.number ?? 1;\nconst currentBody = item.json.body?.storage?.value ?? '';\n\n// \u2500\u2500 From \"Build Row\" node \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst buildRow = $('Build Row').item.json;\nconst pageId = buildRow.page_id ?? '688129';\nconst jiraId = buildRow.jira_id ?? 'NO-ID';\nconst author = buildRow.author ?? 'Unknown';\nconst reviewer = buildRow.reviewer ?? 'Morgan Housel';\nconst prNumber = buildRow.pr_number ?? '';\nconst prTitle = buildRow.pr_title ?? '';\nconst prUrl = buildRow.pr_url ?? '#';\nconst filesChanged = buildRow.files_changed ?? '';\nconst fileCount = buildRow.file_count ?? '?';\n\n// \u2500\u2500 AI Agent output (referenced via $() not item.json) \u2500\u2500\u2500\u2500\n// item.json here is the Confluence GET response, NOT the AI output.\n// We must use $('AI Agent') to access the AI node's output.\nconst aiAgent = $('AI Agent').item.json;\nlet aiSummary = '';\ntry {\n  aiSummary = (\n    aiAgent.output                       // chainLlm / AI Agent node\n    ?? aiAgent.text                      // Basic LLM Chain\n    ?? aiAgent.response?.text            // alternate chainLlm path\n    ?? ''\n  ).toString().trim().replace(/\\n+/g, ' ');\n} catch (e) { aiSummary = ''; }\n\n// Fallback if AI didn't return anything\nconst summaryCell = aiSummary\n  ? aiSummary\n  : `Changed ${fileCount} file(s): ${filesChanged.substring(0, 150)}`;\n\n// \u2500\u2500 Build new table row \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nconst prShortTitle = prTitle.substring(0, 60);\nconst newRow = `<tr>\n  <td><p><strong>${jiraId}</strong></p></td>\n  <td><p>${author}</p></td>\n  <td><p><a href=\"${prUrl}\">PR #${prNumber}: ${prShortTitle}</a></p></td>\n  <td><p>${filesChanged}</p></td>\n  <td><p>${summaryCell}</p></td>\n  <td><p>${reviewer}</p></td>\n</tr>`;\n\n// \u2500\u2500 Append to existing table or create new one \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nlet updatedBody;\n\nif (currentBody.includes('<table')) {\n  if (currentBody.includes('</tbody>')) {\n    updatedBody = currentBody.replace('</tbody>', `${newRow}\\n</tbody>`);\n  } else {\n    updatedBody = currentBody.replace('</table>', `${newRow}\\n</table>`);\n  }\n} else {\n  updatedBody = `\n<h2>PR Changes Log \u2014 AI Summaries</h2>\n<p>Auto-maintained by the Agentic Documentation System. Every merged PR adds a row.</p>\n<table>\n  <tbody>\n    <tr>\n      <th><p><strong>Story</strong></p></th>\n      <th><p><strong>Author</strong></p></th>\n      <th><p><strong>Pull Request</strong></p></th>\n      <th><p><strong>Files Changed</strong></p></th>\n      <th><p><strong>AI Summary of Changes</strong></p></th>\n      <th><p><strong>Reviewer</strong></p></th>\n    </tr>\n    ${newRow}\n  </tbody>\n</table>\n<p><em>Powered by GitHub Actions + n8n + AI Agent</em></p>`;\n}\n\n// \u2500\u2500 Build the final PUT payload \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nitem.json.put_body = {\n  id: pageId,\n  status: 'current',\n  title: 'PR Changes Log - AI Automated',\n  body: {\n    representation: 'storage',\n    value: updatedBody\n  },\n  version: {\n    number: currentVersion + 1,\n    message: `PR #${prNumber} merged by ${author}: ${jiraId}`\n  }\n};\n\nreturn items;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [752, -144],
+      "id": "5194afe6-1b71-41f4-9dee-c39c0bed4f4c",
+      "name": "Append Row"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://dreadvoyager.atlassian.net/wiki/api/v2/pages/327682",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.put_body) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [1200, -144],
+      "id": "5c842d23-78ea-47e6-a2be-1a6e1f3865cb",
+      "name": "HTTP Request1",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "UheEH6Fo3i0kVfs4",
+          "name": "Unnamed credential 2"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.ai_prompt }}\n",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.9,
+      "position": [176, -144],
+      "id": "872aac5e-17ea-4b07-aa2f-162a4d783e8c",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [256, 80],
+      "id": "ea2f5ba0-8994-4db3-99f0-f788a1952729",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "TGsIugGImSns10oX",
+          "name": "Google Gemini(PaLM) Api account 4"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst item = items[0];\nitem.json.final_body = JSON.stringify(item.json.put_body);\nreturn items;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [976, -144],
+      "id": "cf9596f6-31f1-45ec-a537-1f2094091d10",
+      "name": "Build PUT"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "owner": {
+          "__rl": true,
+          "value": "dreadvoyager",
+          "mode": "name"
+        },
+        "repository": {
+          "__rl": true,
+          "value": "test-demo",
+          "mode": "name"
+        },
+        "events": ["pull_request"],
+        "options": {}
+      },
+      "id": "d7ecbbe8-6a5d-4daf-b2ac-9b461bfd2129",
+      "name": "When PR Merged",
+      "type": "n8n-nodes-base.githubTrigger",
+      "typeVersion": 1,
+      "position": [-272, -144],
+      "webhookId": "e2e2a9e1-98ad-47e1-abe0-46bf8ddd0a87",
+      "credentials": {
+        "githubOAuth2Api": {
+          "id": "7zF2tSzKw5vMCehp",
+          "name": "GitHub account 2"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Build Row": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Append Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append Row": {
+      "main": [
+        [
+          {
+            "node": "Build PUT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build PUT": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When PR Merged": {
+      "main": [
+        [
+          {
+            "node": "Build Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "33918cd3-e009-42b4-a82e-4ee5bface6db",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b1c330b831d3e3c29dbc6957034a6099a368420d7432e6ae4bec954f4fa43e71"
+  },
+  "id": "cvNwr4ibn0HgxABj",
+  "tags": []
+}
